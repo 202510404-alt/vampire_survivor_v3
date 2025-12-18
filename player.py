@@ -48,7 +48,7 @@ class Player(pygame.sprite.Sprite):
         self.boss_reward_options_to_display = []
 
     def acquire_new_weapon(self, weapon_class_to_acquire):
-        MAX_WEAPON_SLOTS = 3
+        MAX_WEAPON_SLOTS = 10
         if any(isinstance(w, weapon_class_to_acquire) for w in self.active_weapons):
             if weapon_class_to_acquire in self.available_new_weapons:
                 self.available_new_weapons.remove(weapon_class_to_acquire)
