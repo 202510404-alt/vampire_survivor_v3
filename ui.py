@@ -292,3 +292,49 @@ def draw_game_ui(surface, player_obj, game_entities, current_slime_max_hp_val, b
                 txt_s = small_font.render(f"[{i+1}] {opt_data['text']}",True,config.WHITE)
                 surface.blit(txt_s,txt_s.get_rect(center=opt_r.center))
             except pygame.error as e: print(f"ERROR: 업그레이드 옵션 {i+1} 렌더링 실패: {e}."); pass
+
+# ui.py (맨 아래에 추가)
+class InputBox:
+    def __init__(self, x, y, w, h, text=''):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.color = config.RED 
+        self.text = text
+        self.font = medium_font # ui.py 상단에서 로드된 폰트 사용
+        self.active = False # 현재 입력이 활성화되었는지 여부
+        
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            # 사용자가 상자를 클릭했는지 확인
+            if self.rect.collidepoint(event.pos):
+                self.active = not self.active
+            else:
+                self.active = False
+            self.color = config.RED if self.active else config.UI_OPTION_BOX_BORDER_COLOR # 활성화 시 빨간색 표시
+        
+        if event.type == pygame.KEYDOWN:
+            if self.active:
+                if event.key == pygame.K_RETURN: # 엔터 키를 누르면 입력 종료
+                    self.active = False
+                elif event.key == pygame.K_BACKSPACE:
+                    self.text = self.text[:-1]
+                elif event.unicode:
+                    # 텍스트가 너무 길어지지 않도록 제한
+                    if len(self.text) < 15:
+                        self.text += event.unicode # 입력된 문자를 추가
+                self.color = config.RED if self.active else config.UI_OPTION_BOX_BORDER_COLOR # 엔터 입력 후 색상 복구
+        return not self.active and event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN
+
+    def draw(self, screen):
+        # 텍스트 상자 그리기
+        pygame.draw.rect(screen, config.UI_OPTION_BOX_BG_COLOR, self.rect, border_radius=5)
+        pygame.draw.rect(screen, self.color, self.rect, 3, border_radius=5)
+        
+        # 입력된 텍스트 그리기
+        if self.font:
+            try:
+                text_surface = self.font.render(self.text if self.text else "닉네임을 입력하세요", True, config.WHITE)
+                # 텍스트를 상자 중앙에 위치
+                text_rect = text_surface.get_rect(center=self.rect.center)
+                screen.blit(text_surface, text_rect)
+            except pygame.error as e:
+                print(f"ERROR: InputBox 텍스트 렌더링 실패: {e}.")

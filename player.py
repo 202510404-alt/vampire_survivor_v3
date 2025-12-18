@@ -17,15 +17,18 @@ from skills.storm_skill import StormSkill
 
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, initial_world_x, initial_world_y):
+    def __init__(self, initial_world_x, initial_world_y, name="Player"):
         super().__init__()
         self.image = pygame.Surface([config.PLAYER_SIZE, config.PLAYER_SIZE])
         self.image.fill(config.BLUE)
+        self.total_enemies_killed = 0
+        self.total_bosses_killed = 0
         self.rect = self.image.get_rect(center=(config.SCREEN_WIDTH // 2, config.SCREEN_HEIGHT // 2))
         self.world_x = float(initial_world_x)
         self.world_y = float(initial_world_y)
         self.prev_world_x = self.world_x
         self.prev_world_y = self.world_y
+        self.name = name
         self.hp = config.PLAYER_INITIAL_HP
         self.max_hp = config.PLAYER_INITIAL_HP
         self.invincible_timer = 0

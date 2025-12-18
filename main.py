@@ -1,4 +1,3 @@
-# main.py
 import pygame
 import random
 import math
@@ -41,34 +40,57 @@ storm_projectiles = []
 slime_spawn_timer = 0
 game_over = False
 boss_active = False
-slime_kill_count = 0
-boss_defeat_count = 0 
 current_slime_max_hp = config.SLIME_INITIAL_BASE_HP
 slime_hp_increase_timer = 0
 game_state = GAME_STATE_MENU
 is_game_over_for_menu = False
+input_box = None        # 🚩 InputBox 전역 변수 추가
+is_name_entered = False # 🚩 이름 입력 상태 전역 변수 추가
 
+# main.py - reset_game_state 함수 (최종 수정)
 def reset_game_state():
     global player, camera_obj, slimes, daggers, exp_orbs, bats, slime_bullets, boss_slimes, storm_projectiles
     global slime_spawn_timer, current_slime_max_hp, slime_hp_increase_timer
-    global boss_active, slime_kill_count, boss_defeat_count, is_game_over_for_menu
+    global boss_active, is_game_over_for_menu, input_box, is_name_entered # 🚩 input_box와 is_name_entered 추가!
     
-    player = Player(config.MAP_WIDTH/2, config.MAP_HEIGHT/2)
+    # 1. 닉네임 가져오기 (InputBox에서 텍스트를 읽어옵니다)
+    player_name_to_use = input_box.text if input_box and input_box.text else "익명 개발자" 
+    
+    # 2. Player 객체 생성 시 닉네임 전달
+    player = Player(config.MAP_WIDTH/2, config.MAP_HEIGHT/2, player_name_to_use) # 🚩 닉네임 인자 전달
+    
+    # 3. 나머지 초기화 로직 유지
     camera_obj = Camera(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
     slimes.clear(); daggers.clear(); exp_orbs.clear(); bats.clear(); slime_bullets.clear(); boss_slimes.clear(); storm_projectiles.clear()
     slime_spawn_timer = 0; current_slime_max_hp = config.SLIME_INITIAL_BASE_HP; slime_hp_increase_timer = 0
     player.is_selecting_upgrade = False; player.is_selecting_boss_reward = False
-    boss_active = False; slime_kill_count = 0; boss_defeat_count = 0; is_game_over_for_menu = False
+    boss_active = False; is_game_over_for_menu = False
+    
+    # 4. InputBox 초기화 (재시작 시 닉네임을 다시 입력할 수 있도록)
+    if input_box:
+        input_box.text = ""
+        is_name_entered = False
+
 
 async def main():
     global game_state, is_game_over_for_menu, slime_spawn_timer
-    global current_slime_max_hp, slime_hp_increase_timer, slime_kill_count, boss_active, boss_defeat_count
+    global current_slime_max_hp, slime_hp_increase_timer, boss_active
     global player, camera_obj, slimes, daggers, exp_orbs, bats, slime_bullets, boss_slimes, storm_projectiles
+    global input_box, is_name_entered # 🚩 InputBox 관련 global 변수 추가!
 
     pygame.init()
     screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     pygame.display.set_caption("뱀파이어 서바이벌 v.2")
     clock = pygame.time.Clock()
+
+    # 🚩 InputBox 생성 (게임 시작 시 한 번)
+    input_box = ui.InputBox(
+        (config.SCREEN_WIDTH // 2) - 150, 
+        (config.SCREEN_HEIGHT // 2) + 100, 
+        300, 
+        50, 
+        text='' # 초기 텍스트 없음
+    )
 
     # 배경 이미지 로드 (경로 슬래시 / 사용)
     background_image = None
@@ -91,9 +113,25 @@ async def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT: running = False
             
+# main.py (Line 120 근처 - 메인 루프 내부)
             if game_state == GAME_STATE_MENU:
+                
+                # 🚩🚩 닉네임 입력 처리 로직 수정 🚩🚩
+                if not is_name_entered and input_box:
+                    enter_pressed = input_box.handle_event(event) # 🚩 enter_pressed는 엔터가 눌렸을 때만 True를 반환
+                    
+                    if enter_pressed: # 엔터가 눌렸고, 이제 비활성화 상태가 되었을 때
+                        if input_box.text:
+                            is_name_entered = True
+                            print(f"닉네임 설정 완료: {input_box.text}")
+                        else: # 이름 없이 엔터 누르면 기본 이름으로 설정
+                            input_box.text = "익명 개발자"
+                            is_name_entered = True
+                
+                # 🚩🚩 시작 버튼 클릭 로직 수정 🚩🚩
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if start_button_rect.collidepoint(mouse_pos):
+                    # 시작 버튼은 is_name_entered가 True일 때만 활성화됩니다.
+                    if start_button_rect.collidepoint(mouse_pos) and is_name_entered: 
                         reset_game_state()
                         game_state = GAME_STATE_PLAYING
             
@@ -111,7 +149,7 @@ async def main():
                     elif player and player.is_selecting_boss_reward:
                         if event.key == pygame.K_1: player.apply_chosen_boss_reward(0)
                         elif event.key == pygame.K_2 and len(player.boss_reward_options_to_display)>1: player.apply_chosen_boss_reward(1)
-                        elif event.key == pygame.K_3 and len(player.boss_reward_options_to_display)>2: player.apply_chosen_boss_reward(2)
+                        elif event.key == pygame.K_3 and len(player.boss_reward_options_to_display)>2: removed_weapon_instance = player.apply_chosen_upgrade(2)
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                     if player and player.special_skill:
                         mouse_world_x = camera_obj.world_x + event.pos[0]
@@ -123,9 +161,32 @@ async def main():
             
             if not (player.is_selecting_upgrade or player.is_selecting_boss_reward):
                 player.update(slimes, game_entities)
-                if player.hp <= 0:
-                    game_state = GAME_STATE_MENU; is_game_over_for_menu = True
 
+                if player.hp <= 0:
+                    
+                    # 🚩 랭킹 저장 로직 삽입 시작 🚩
+                    
+                    # 1. 생존 시간 계산
+                    game_time_in_seconds = slime_hp_increase_timer / config.FPS 
+                    current_difficulty_factor = current_slime_max_hp / config.SLIME_INITIAL_BASE_HP
+
+                    # 2. 저장할 데이터 준비
+                    score_data = {
+                        "level": player.level,
+                        "kills": player.total_enemies_killed,
+                        "bosses": player.total_bosses_killed,
+                        "time": game_time_in_seconds,
+                        "difficulty_factor": current_difficulty_factor
+                    }
+                    
+                    # 3. 랭킹 저장 함수 호출 (utils.py에 있어야 함)
+                    utils.save_new_ranking(player.name, score_data)
+                    print(f"\n기록 저장 완료! 생존 시간: {game_time_in_seconds:.2f}초, 닉네임: {player.name}")
+                    
+                    # 🚩 랭킹 저장 로직 삽입 완료 🚩
+
+                    game_state = GAME_STATE_MENU; is_game_over_for_menu = True
+                
                 if game_state == GAME_STATE_PLAYING:
                     camera_obj.update(player)
                     if not boss_active:
@@ -149,18 +210,18 @@ async def main():
                     slimes_to_remove = [s for s in slimes if not s.update(player.world_x, player.world_y, game_entities)]
                     for s_inst in slimes_to_remove:
                         if s_inst.hp <= 0 and not isinstance(s_inst, BossMinionSlime):
-                            slime_kill_count += 1
+                            player.total_enemies_killed += 1
                             exp_orbs.append(ExpOrb(s_inst.world_x, s_inst.world_y))
                     slimes[:] = [s for s in slimes if s not in slimes_to_remove]
 
                     # 2. 보스 처리
-                    if not boss_active and slime_kill_count > 0 and slime_kill_count % config.BOSS_SLIME_SPAWN_KILL_THRESHOLD == 0 and not boss_slimes:
+                    if not boss_active and player.total_enemies_killed > 0 and player.total_enemies_killed % config.BOSS_SLIME_SPAWN_KILL_THRESHOLD == 0 and not boss_slimes:
                         boss_active = True
                         boss_slimes.append(BossSlime((player.world_x + 300)%config.MAP_WIDTH, (player.world_y + 300)%config.MAP_HEIGHT, current_slime_max_hp))
 
                     bosses_to_remove = [b for b in boss_slimes if not b.update(player.world_x, player.world_y, game_entities)]
                     for boss in bosses_to_remove:
-                        boss_active = False; boss_defeat_count += 1; player.trigger_boss_reward_selection()
+                        boss_active = False; player.total_bosses_killed += 1; player.trigger_boss_reward_selection()
                         for _ in range(20): exp_orbs.append(ExpOrb(boss.world_x + random.randint(-50,50), boss.world_y + random.randint(-50,50)))
                     boss_slimes[:] = [b for b in boss_slimes if b not in bosses_to_remove]
 
@@ -210,12 +271,18 @@ async def main():
             if not (player.invincible_timer > 0 and player.invincible_timer % 10 < 5): screen.blit(player.image, player.rect)
             for e in exp_orbs + daggers + bats + slime_bullets + storm_projectiles + slimes + boss_slimes:
                 e.draw(screen, camera_obj.world_x, camera_obj.world_y)
-            ui.draw_game_ui(screen, player, game_entities, current_slime_max_hp, boss_defeat_count, slime_kill_count, config.BOSS_SLIME_SPAWN_KILL_THRESHOLD)
+            ui.draw_game_ui(screen, player, game_entities, current_slime_max_hp, player.total_bosses_killed, player.total_enemies_killed, config.BOSS_SLIME_SPAWN_KILL_THRESHOLD)
 
         elif game_state == GAME_STATE_MENU:
             screen.fill(config.GREEN)
             start_button_rect.center = (config.SCREEN_WIDTH // 2, config.SCREEN_HEIGHT // 2)
             ui.draw_main_menu(screen, start_button_rect, exit_button_rect, is_game_over_for_menu)
+            
+            # 🚩🚩 닉네임 입력 상자 그리기 로직 추가 🚩🚩
+            # 이름이 입력되지 않았을 때만 입력창을 그립니다.
+            if not is_name_entered and input_box:
+                input_box.draw(screen)
+            # 🚩🚩 닉네임 입력 상자 그리기 로직 추가 완료 🚩🚩
 
         pygame.display.flip()
         await asyncio.sleep(0) # 웹 브라우저를 위해 제어권 양보
