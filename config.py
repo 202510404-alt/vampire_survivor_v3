@@ -137,9 +137,8 @@ STORM_PROJECTILE_SPEED = 7
 STORM_PROJECTILE_LIFESPAN_SECONDS = 4
 STORM_SKILL_DAMAGE_INCREASE = 25
 STORM_SKILL_COOLDOWN_DECREASE_SECONDS = 5
+# config.py (맨 아래 JSONBIN 설정 부분)
 
-# config.py (맨 아래에 추가)
-
-# 🚩 JSONBIN.IO 설정
-JSONBIN_API_KEY = "$2a$10$P6x19LfOf7v3M.HWPG/jsO3.JHYEd4JQ4HWeiyvdHFf7cyeUfd4f6" # 🚩 선생님의 키로 설정
-JSONBIN_BIN_URL = "실제_JSONBIN_BIN_URL_여기에_입력" # 🚩 여기에 실제 Bin URL을 넣어주십시오. (예: https://api.jsonbin.io/v3/b/669d6718ad19c30f48866164)
+# 🚩 JSONBIN.IO 설정 (최종 마스터 키 및 Bin URL 적용)
+JSONBIN_API_KEY = "$2a$10$7eC/WMxnHG69g8oVI1jBkOQWKu6jZF5eOtprIHYEcZx3RKq0veh4." # 🚩🚩 최종 마스터 키
+JSONBIN_BIN_URL = "https://api.jsonbin.io/v3/b/69001bb8ae596e708f31c2c5" # 🚩🚩 선생님의 Bin URL

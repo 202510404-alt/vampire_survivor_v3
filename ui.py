@@ -22,7 +22,7 @@ medium_font = None
 # 랭킹 항목 정보 (버튼 텍스트와 내부 키 매핑)
 CATEGORY_INFO = [
     {"name": "난이도 배율", "key": "DifficultyScore"},
-    {"name": "최고 레벨", "key": "Level"},
+    {"name": "최고 레벨", "key": "Levels"},
     {"name": "총 킬 수", "key": "Kills"},
     {"name": "보스 처치", "key": "Bosses"},
     {"name": "생존 시간", "key": "SurvivalTime"}

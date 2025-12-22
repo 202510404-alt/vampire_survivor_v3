@@ -51,7 +51,7 @@ is_name_entered = False
 # 랭킹 관련 전역 변수
 online_rankings = None
 current_rank_category_index = 0
-RANK_CATEGORIES = ["DifficultyScore", "Level", "Kills", "Bosses", "SurvivalTime"]
+RANK_CATEGORIES = ["DifficultyScore", "Levels", "Kills", "Bosses", "SurvivalTime"]
 
 # reset_game_state 함수 (게임 초기화)
 def reset_game_state():
@@ -219,7 +219,7 @@ async def main():
                     current_difficulty_factor = current_slime_max_hp / config.SLIME_INITIAL_BASE_HP
 
                     score_data = {
-                        "level": player.level,
+                        "levels": player.level,
                         "kills": player.total_enemies_killed,
                         "bosses": player.total_bosses_killed,
                         "difficulty_score": current_difficulty_factor,
