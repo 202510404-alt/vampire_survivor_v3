@@ -20,7 +20,7 @@ async def load_rankings_data():
 async def main():
     pygame.init()
     screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
-    pygame.display.set_caption("뱀파이어 서바이벌 v.2 (Modular + Screen Shake)")
+    pygame.display.set_caption("뱀파이어 서바이벌 v.2 (Inventory System)")
     clock = pygame.time.Clock()
 
     # UI 초기화
@@ -49,7 +49,7 @@ async def main():
             if event.type == pygame.QUIT: 
                 running = False
             
-            # --- 메뉴 이벤트 ---
+            # --- 1. 메뉴 상태 이벤트 ---
             if state.game_state == state.GAME_STATE_MENU:
                 if not state.is_name_entered:
                     if state.input_box.handle_event(event): 
@@ -59,12 +59,11 @@ async def main():
                     if start_btn.collidepoint(mouse_pos) and state.is_name_entered:
                         state.reset_game_state()
                         state.game_state = state.GAME_STATE_PLAYING
-
                     elif rank_btn.collidepoint(mouse_pos):
                         state.game_state = state.GAME_STATE_RANKING
                         await load_rankings_data()
             
-            # --- 랭킹 이벤트 ---
+            # --- 2. 랭킹 상태 이벤트 ---
             elif state.game_state == state.GAME_STATE_RANKING:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for btn in ui.RANKING_BUTTONS:
@@ -73,22 +72,17 @@ async def main():
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     state.game_state = state.GAME_STATE_MENU
 
-            # --- 게임 플레이 이벤트 ---
+            # --- 3. 게임 플레이 상태 이벤트 ---
             elif state.game_state == state.GAME_STATE_PLAYING:
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_m: # 🟢 M키 누르면 무기창
+                    # 인벤토리 열기
+                    if event.key == pygame.K_m:
                         state.game_state = state.GAME_STATE_INVENTORY
                     
-                    if event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
-                        state.game_state = state.GAME_STATE_PLAYING
-            elif state.game_state == state.GAME_STATE_INVENTORY:
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_m or event.key == pygame.K_ESCAPE: # 🟢 다시 M이나 ESC 누르면 복귀
-                        state.game_state = state.GAME_STATE_PLAYING
-                        
-                    if event.key == pygame.K_ESCAPE: 
+                    elif event.key == pygame.K_ESCAPE: 
                         state.game_state = state.GAME_STATE_MENU
                     
+                    # 업그레이드 선택 로직
                     elif state.player.is_selecting_upgrade or state.player.is_selecting_boss_reward:
                         choice = -1
                         if event.key == pygame.K_1: choice = 0
@@ -105,7 +99,19 @@ async def main():
                         wx, wy = state.camera_obj.world_x + event.pos[0], state.camera_obj.world_y + event.pos[1]
                         state.player.special_skill.activate(wx, wy, {'storm_projectiles': state.storm_projectiles})
 
-        # --- 게임 업데이트 로직 ---
+            # --- 4. 인벤토리 상태 이벤트 ---
+            elif state.game_state == state.GAME_STATE_INVENTORY:
+                if event.type == pygame.KEYDOWN:
+                    # M이나 ESC를 누르면 다시 게임으로 복귀
+                    if event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
+                        state.game_state = state.GAME_STATE_PLAYING
+                
+                # (추후 무기 클릭 상세정보 기능을 위해 마우스 클릭 이벤트도 감지만 해둠)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # 여기서 ui.screens의 버튼 좌표 체크 로직 추가 가능
+                    pass
+
+        # --- 게임 업데이트 로직 (PLAYING 상태일 때만 돌아감 = 자동 일시정지 효과) ---
         if state.game_state == state.GAME_STATE_PLAYING and state.player:
             if not (state.player.is_selecting_upgrade or state.player.is_selecting_boss_reward):
                 state.player.update(state.slimes, state.get_entities_dict())
@@ -141,21 +147,19 @@ async def main():
                     # 발사체 수명 업데이트
                     state.daggers[:] = [d for d in state.daggers if d.update(state.get_entities_dict())]
 
-        # --- 그리기 섹션 (흔들림 적용) ---
-        if state.game_state == state.GAME_STATE_PLAYING and state.player:
-
-            # 🟢 1. 흔들림 값 계산 ( intensity가 클수록 크게 흔들림 )
+        # --- 그리기 섹션 ---
+        if state.game_state in [state.GAME_STATE_PLAYING, state.GAME_STATE_INVENTORY] and state.player:
+            # 1. 흔들림 값 계산 (INVENTORY 상태일 때는 0으로 고정하여 떨림 방지)
             render_offset_x = 0
             render_offset_y = 0
-            if state.player.shake_intensity > 0:
+            if state.game_state == state.GAME_STATE_PLAYING and state.player.shake_intensity > 0:
                 render_offset_x = random.uniform(-state.player.shake_intensity, state.player.shake_intensity)
                 render_offset_y = random.uniform(-state.player.shake_intensity, state.player.shake_intensity)
             
-            # 🟢 2. 실제 그릴 때 사용할 흔들리는 카메라 좌표 계산
             shake_cam_x = state.camera_obj.world_x + render_offset_x
             shake_cam_y = state.camera_obj.world_y + render_offset_y
 
-            # 3. 배경 그리기 (🚩 흔들린 카메라 shake_cam_x/y 기준)
+            # 2. 배경 그리기
             if background_image:
                 sx, sy = -(shake_cam_x % bg_width), -(shake_cam_y % bg_height)
                 for y in range((config.SCREEN_HEIGHT // bg_height) + 2):
@@ -164,24 +168,25 @@ async def main():
             else: 
                 screen.fill(config.GREEN)
 
-            # 4. 무기 그리기 (🚩 shake_cam_x/y 기준)
+            # 3. 모든 게임 요소 그리기
             for wpn in state.player.active_weapons: 
                 wpn.draw(screen, shake_cam_x, shake_cam_y)
             
-            # 5. 플레이어 그리기 (화면 중앙 rect에서 흔들림만큼 보정)
             if not (state.player.invincible_timer > 0 and state.player.invincible_timer % 10 < 5):
-                # 카메라가 shake_cam_x만큼 이동했으므로, 플레이어도 그에 맞춰 반대로 흔들어줌
-                player_draw_rect = state.player.rect.copy()
-                player_draw_rect.x -= render_offset_x
-                player_draw_rect.y -= render_offset_y
-                screen.blit(state.player.image, player_draw_rect)
+                p_draw_rect = state.player.rect.copy()
+                p_draw_rect.x -= render_offset_x
+                p_draw_rect.y -= render_offset_y
+                screen.blit(state.player.image, p_draw_rect)
             
-            # 6. 모든 엔티티 그리기 (🚩 shake_cam_x/y 기준)
             for e in state.exp_orbs + state.daggers + state.bats + state.slime_bullets + state.storm_projectiles + state.slimes + state.boss_slimes:
                 e.draw(screen, shake_cam_x, shake_cam_y)
             
-            # 7. UI는 흔들리지 않게 고정 (원래 좌표 체계 사용)
+            # 4. 상단 HUD 그리기
             ui.draw_game_ui(screen, state.player, state.get_entities_dict(), state.current_slime_max_hp, state.player.total_bosses_killed, state.player.total_enemies_killed, config.BOSS_SLIME_SPAWN_KILL_THRESHOLD)
+
+            # 🟢 5. 인벤토리 오버레이 (상태가 INVENTORY일 때만)
+            if state.game_state == state.GAME_STATE_INVENTORY:
+                ui.draw_weapon_inventory(screen, state.player)
 
         elif state.game_state == state.GAME_STATE_MENU:
             screen.fill(config.GREEN)

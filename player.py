@@ -107,7 +107,9 @@ class Player(pygame.sprite.Sprite):
             self.special_skill.update()
 
     def take_damage(self, amount):
-        self.shake_intensity = amount / 3.0 
+        self.shake_intensity = 0 
+        new_shake = amount / 3.0
+        self.shake_intensity = min(new_shake, 20.0)
         if self.invincible_timer > 0: return
         self.hp = max(0, self.hp - amount)
         self.invincible_timer = config.PLAYER_INVINCIBILITY_DURATION
