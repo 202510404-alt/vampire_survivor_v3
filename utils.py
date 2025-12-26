@@ -2,70 +2,100 @@ import math
 import json
 import asyncio
 import config
+import sys
 
-# 1. 환경 감지 및 통신 모듈 설정
-IS_WEB = False
-try:
-    from pyodide.http import pyfetch # type: ignore
-    IS_WEB = True
-except ImportError:
-    import urllib.request
-    IS_WEB = False
+# 1. 환경 감지 (pygbag 실행 시 무조건 emscripten으로 잡힘)
+IS_WEB = (sys.platform == "emscripten")
 
-# ----------------------------------------------------
-# 2. Supabase 통신 함수 (400 에러 상세 디버깅 포함)
-# ----------------------------------------------------
-async def _fetch_supabase(endpoint_with_query, method, data=None):
-    url = f"{config.SUPABASE_URL}/rest/v1/{endpoint_with_query}"
+# 🚩 [필살기] 브라우저 F12 콘솔에 무조건 로그 찍는 함수
+def log_to_browser(msg, data=None):
+    message = f"🚀 [Vampire-Debug] {msg}"
+    if data:
+        message += f" | DATA: {data}"
     
-    # Supabase 필수 헤더
-    headers = {
-        "apikey": config.SUPABASE_KEY,
-        "Authorization": f"Bearer {config.SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
+    if IS_WEB:
+        try:
+            import js
+            # 브라우저 F12 콘솔에 직접 출력
+            js.window.console.log(message)
+        except:
+            print(message)
+    else:
+        print(message)
+
+# 랭킹 항목 정의
+RANK_CATEGORIES = ["Levels", "Kills", "Bosses", "DifficultyScore", "SurvivalTime"]
+
+# ----------------------------------------------------
+# 2. Supabase 통신 함수 (pyfetch 사용)
+# ----------------------------------------------------
+async def _fetch_supabase(endpoint, method, data=None):
+    url = f"{config.SUPABASE_URL}/rest/v1/{endpoint}"
+    log_to_browser(f"통신 시도 ({method})", url)
 
     if IS_WEB:
         try:
-            await asyncio.sleep(0.01) # 멈춤 방지
-            body_json = json.dumps(data) if data else None
-            response = await pyfetch(url, method=method, headers=headers, body=body_json)
+            from pyodide.http import pyfetch
+            headers = {
+                "apikey": config.SUPABASE_KEY,
+                "Authorization": f"Bearer {config.SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            }
+            
+            # 멈춤 방지용 양보
+            await asyncio.sleep(0.01)
+            
+            response = await pyfetch(
+                url=url,
+                method=method,
+                headers=headers,
+                body=json.dumps(data) if data else None
+            )
+            
             if response.status in [200, 201]:
-                return await response.string()
+                res_text = await response.string()
+                log_to_browser("✅ 통신 성공!")
+                return res_text
+            else:
+                log_to_browser(f"❌ API 에러 코드: {response.status}")
+                return None
+        except Exception as e:
+            log_to_browser(f"🔥 치명적 오류 발생", str(e))
             return None
-        except: return None
     else:
+        # 로컬(VSC) 환경용 (urllib)
+        import urllib.request
         try:
-            # 로컬(VSC)용 urllib 방식
+            headers = {
+                "apikey": config.SUPABASE_KEY,
+                "Authorization": f"Bearer {config.SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            }
             req_data = json.dumps(data).encode('utf-8') if data else None
             req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
             with urllib.request.urlopen(req) as res:
                 return res.read().decode('utf-8')
-        except urllib.error.HTTPError as e:
-            # 🚩 400 에러 원인을 더 자세히 찍어줍니다 (컬럼명 오타 확인용)
-            err_body = e.read().decode('utf-8')
-            print(f"LOCAL DB ERROR: {e.code} {err_body}")
-            return None
         except Exception as e:
             print(f"LOCAL DB ERROR: {e}")
             return None
 
 # ----------------------------------------------------
-# 3. 랭킹 로드 (UI 데이터 포맷 변환)
+# 3. 랭킹 로드/저장 로직
 # ----------------------------------------------------
 async def load_rankings_online():
-    # 전체 데이터를 가져와서 UI 형식에 맞게 변환
+    log_to_browser("랭킹 로드 시퀀스 시작")
+    # 컬럼명 에러 방지를 위해 정렬 없이 가져오기 시도
     data_str = await _fetch_supabase("rankings?select=*", 'GET')
     
     formatted_list = []
     if data_str:
         try:
             raw_list = json.loads(data_str)
+            log_to_browser(f"데이터 수신 완료: {len(raw_list)}개")
             for row in raw_list:
-                # 메인 UI가 인식하는 카테고리별로 데이터 뻥튀기
-                for cat in ["Levels", "Kills", "Bosses", "DifficultyScore", "SurvivalTime"]:
-                    # DB 컬럼명과 UI 키 연결
+                for cat in RANK_CATEGORIES:
+                    # DB 컬럼명 매칭 (소문자 기준)
                     db_col = cat.lower().replace("score", "_score").replace("time", "_time")
                     formatted_list.append({
                         "ID": row.get("name", "익명"),
@@ -75,13 +105,11 @@ async def load_rankings_online():
                         "Kills": row.get("kills", 0)
                     })
         except Exception as e:
-            print(f"파싱 에러: {e}")
+            log_to_browser("JSON 파싱 에러", str(e))
     return formatted_list
 
-# ----------------------------------------------------
-# 4. 랭킹 저장
-# ----------------------------------------------------
 async def save_new_ranking_online(name, score_data):
+    log_to_browser(f"점수 저장 시작: {name}")
     new_row = {
         "name": str(name),
         "levels": int(score_data.get('levels', 0)),
@@ -90,18 +118,13 @@ async def save_new_ranking_online(name, score_data):
         "difficulty_score": float(score_data.get('difficulty_score', 0.0)),
         "survival_time": float(score_data.get('survival_time', 0.0))
     }
-    
-    res = await _fetch_supabase("rankings", 'POST', data=new_row)
-    if res:
-        print("Supabase DB에 저장 성공!")
-        return True
-    return False
+    await _fetch_supabase("rankings", 'POST', data=new_row)
+    return True
 
 # ----------------------------------------------------
-# 5. 🚩 거리 계산 유틸리티 (이게 빠져서 튕겼던 거임!!)
+# 4. 필수 수학 유틸 (삭제 금지)
 # ----------------------------------------------------
 def get_wrapped_delta(val1, val2, map_dim):
-    """무한 루프 맵에서 두 좌표 사이의 최단 거리를 계산합니다."""
     delta = val2 - val1
     if abs(delta) > map_dim / 2:
         if delta > 0: delta -= map_dim
@@ -109,7 +132,6 @@ def get_wrapped_delta(val1, val2, map_dim):
     return delta
 
 def distance_sq_wrapped(x1, y1, x2, y2, map_w, map_h):
-    """무한 루프 맵에서 두 좌표 사이의 거리의 제곱을 계산합니다."""
     dx = get_wrapped_delta(x1, x2, map_w)
     dy = get_wrapped_delta(y1, y2, map_h)
     return dx*dx + dy*dy

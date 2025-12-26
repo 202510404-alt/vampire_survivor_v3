@@ -13,17 +13,22 @@ from entities.exp_orb import ExpOrb
 from entities.bat_minion import BatMinion
 
 # ----------------------------------------------------
-# 1. 비동기 랭킹 데이터 로드 (멈춤 방지)
+# 1. 비동기 랭킹 데이터 로드 (F12 콘솔 연동)
 # ----------------------------------------------------
 async def load_rankings_data():
     """Supabase에서 랭킹 데이터를 백그라운드로 가져옵니다."""
+    if utils.IS_WEB:
+        utils.js.console.log("📊 [Main] 서버에 데이터 요청을 보냅니다...")
+    
     state.online_rankings = None  # 로딩 중 표시용
     try:
         data = await utils.load_rankings_online()
         state.online_rankings = data if data is not None else []
-        print(f"랭킹 데이터 로드 완료. 항목 수: {len(state.online_rankings)}")
+        if utils.IS_WEB:
+            utils.js.console.log(f"✅ [Main] 데이터 수신 완료: {len(state.online_rankings)}개")
     except Exception as e:
-        print(f"랭킹 로드 중 오류: {e}")
+        if utils.IS_WEB:
+            utils.js.console.error(f"🔥 [Main] 데이터 로드 실패: {str(e)}")
         state.online_rankings = []
 
 # ----------------------------------------------------
@@ -32,7 +37,8 @@ async def load_rankings_data():
 async def main():
     pygame.init()
     screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
-    pygame.display.set_caption("뱀파이어 서바이벌 v.2 (Supabase & Grid Optimized)")
+    # v3로 버전 표시해서 캐시 갱신 확인용으로 씀
+    pygame.display.set_caption("뱀파이어 서바이벌 v.3 (Final Fix)")
     clock = pygame.time.Clock()
 
     # UI 및 입력창 초기화
@@ -50,10 +56,10 @@ async def main():
 
     running = True
     
-    # 🚩 버튼 객체 정의 (아까 누락됐던 exit_btn 포함)
+    # 🚩 버튼 객체 정의
     start_btn = pygame.Rect(0, 0, 200, 80)
     rank_btn = pygame.Rect(0, 0, 150, 60)
-    exit_btn = pygame.Rect(config.SCREEN_WIDTH - 50, 10, 40, 40)
+    exit_btn = pygame.Rect(config.SCREEN_WIDTH - 50, 10, 40, 40) # Pylance 에러 해결
 
     while running:
         dt = clock.tick(config.FPS) / 1000.0
@@ -74,9 +80,11 @@ async def main():
                         state.reset_game_state()
                         state.game_state = state.GAME_STATE_PLAYING
                     elif rank_btn.collidepoint(mouse_pos):
+                        if utils.IS_WEB:
+                            utils.js.console.log("🖱️ 랭킹 버튼 클릭됨!")
                         state.game_state = state.GAME_STATE_RANKING
-                        # 🚩 await 대신 create_task를 써서 게임이 멈추는 걸 방지!
-                        asyncio.create_task(load_rankings_data())
+                        # 🚩 멈춤 방지 필살기 (비동기 태스크 생성)
+                        asyncio.create_task(load_rankings_data()) 
             
             # [랭킹 상태]
             elif state.game_state == state.GAME_STATE_RANKING:
@@ -98,7 +106,7 @@ async def main():
                     if event.key == pygame.K_m: state.game_state = state.GAME_STATE_INVENTORY
                     elif event.key == pygame.K_ESCAPE: state.game_state = state.GAME_STATE_MENU
                     
-                    # 🟢 선택 로직 (보스 보상 우선 처리)
+                    # 🟢 업그레이드/보상 선택 (보스 보상부터 우선 처리하도록 수정)
                     elif state.player.is_selecting_boss_reward or state.player.is_selecting_upgrade:
                         choice = -1
                         if event.key == pygame.K_1: choice = 0
@@ -107,10 +115,12 @@ async def main():
                         
                         if choice != -1:
                             if state.player.is_selecting_boss_reward:
+                                # 보스 스킬 선택
                                 state.player.apply_chosen_boss_reward(choice)
                             else:
+                                # 일반 레벨업 선택
                                 removed = state.player.apply_chosen_upgrade(choice)
-                                if removed: # 제거된 무기(박쥐 등)가 있으면 리스트 정리
+                                if removed:
                                     state.bats[:] = [b for b in state.bats if not (isinstance(b, BatMinion) and b.controller == removed)]
 
             # [인벤토리 상태]
@@ -119,11 +129,12 @@ async def main():
                     if event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
                         state.game_state = state.GAME_STATE_PLAYING
 
-        # --- 게임 업데이트 로직 (자동 일시정지 적용) ---
+        # --- 게임 업데이트 로직 ---
         if state.game_state == state.GAME_STATE_PLAYING and state.player:
+            # 선택창이 떠있으면 게임 정지 (Pause)
             if not (state.player.is_selecting_upgrade or state.player.is_selecting_boss_reward):
                 
-                # 🟢 그리드 시스템 실시간 업데이트 (최적화 핵심)
+                # 🟢 그리드 시스템 갱신
                 enemy_grid.clear()
                 for s in state.slimes + state.boss_slimes:
                     if s.hp > 0: enemy_grid.register_enemy(s)
@@ -133,13 +144,13 @@ async def main():
                 # 사망 처리
                 if state.player.hp <= 0:
                     score = {
-                        "levels": state.player.level, 
-                        "kills": state.player.total_enemies_killed,
+                        "levels": state.player.level, "kills": state.player.total_enemies_killed,
                         "bosses": state.player.total_bosses_killed, 
                         "difficulty_score": state.current_slime_max_hp / config.SLIME_INITIAL_BASE_HP,
                         "survival_time": state.slime_hp_increase_timer / config.FPS
                     }
-                    # 🚩 Supabase에 기록 저장 (await로 확실히 완료)
+                    if utils.IS_WEB:
+                        utils.js.console.log("💀 사망! 결과를 서버에 저장합니다...")
                     await utils.save_new_ranking_online(state.player.name, score)
                     state.game_state = state.GAME_STATE_MENU
                     state.is_game_over_for_menu = True
@@ -149,7 +160,6 @@ async def main():
                     logic.update_game_logic(state)
                     logic.handle_boss_logic(state)
                     
-                    # 슬라임 업데이트 및 사망 처리
                     slimes_to_rem = [s for s in state.slimes if not s.update(state.player.world_x, state.player.world_y, state.get_entities_dict())]
                     for s in slimes_to_rem:
                         if s.hp <= 0 and not isinstance(s, BossMinionSlime):
@@ -157,15 +167,12 @@ async def main():
                             state.exp_orbs.append(ExpOrb(s.world_x, s.world_y))
                     state.slimes[:] = [s for s in state.slimes if s not in slimes_to_rem]
                     
-                    # 물리 및 충돌 (그리드 최적화 버전)
+                    # 물리 충돌 (그리드 최적화)
                     physics.handle_collisions(state)
-                    
-                    # 발사체 수명 업데이트
                     state.daggers[:] = [d for d in state.daggers if d.update(state.get_entities_dict())]
 
         # --- 그리기 섹션 ---
         if state.game_state in [state.GAME_STATE_PLAYING, state.GAME_STATE_INVENTORY] and state.player:
-            # 화면 흔들림 계산
             off_x, off_y = 0, 0
             if state.game_state == state.GAME_STATE_PLAYING and state.player.shake_intensity > 0:
                 off_x = random.uniform(-state.player.shake_intensity, state.player.shake_intensity)
@@ -174,14 +181,13 @@ async def main():
             shake_cam_x = state.camera_obj.world_x + off_x
             shake_cam_y = state.camera_obj.world_y + off_y
 
-            # 1. 배경 (무한 래핑)
+            # 1. 배경
             if background_image:
                 sx, sy = -(shake_cam_x % bg_w), -(shake_cam_y % bg_h)
                 for y in range((config.SCREEN_HEIGHT // bg_h) + 2):
                     for x in range((config.SCREEN_WIDTH // bg_w) + 2):
                         screen.blit(background_image, (sx + x * bg_w, sy + y * bg_h))
-            else:
-                screen.fill(config.GREEN)
+            else: screen.fill(config.GREEN)
 
             # 2. 무기 및 플레이어
             for wpn in state.player.active_weapons: wpn.draw(screen, shake_cam_x, shake_cam_y)
@@ -194,7 +200,7 @@ async def main():
             for e in state.exp_orbs + state.daggers + state.bats + state.slime_bullets + state.storm_projectiles + state.slimes + state.boss_slimes:
                 e.draw(screen, shake_cam_x, shake_cam_y)
             
-            # 4. 상단 HUD 및 선택창
+            # 4. HUD
             ui.draw_game_ui(screen, state.player, state.get_entities_dict(), state.current_slime_max_hp, state.player.total_bosses_killed, state.player.total_enemies_killed, config.BOSS_SLIME_SPAWN_KILL_THRESHOLD)
             if state.game_state == state.GAME_STATE_INVENTORY:
                 ui.draw_weapon_inventory(screen, state.player)
@@ -212,7 +218,7 @@ async def main():
             ui.draw_ranking_screen(screen, filtered, cat)
 
         pygame.display.flip()
-        await asyncio.sleep(0) # 웹 브라우저가 숨쉴 틈을 주는 한 줄
+        await asyncio.sleep(0) 
 
 if __name__ == "__main__":
     asyncio.run(main())
