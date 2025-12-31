@@ -7,6 +7,7 @@ GAME_STATE_MENU = "MENU"
 GAME_STATE_PLAYING = "PLAYING"
 GAME_STATE_RANKING = "RANKING"
 GAME_STATE_INVENTORY = "INVENTORY"
+GAME_STATE_CHARACTER_MENU = "CHARACTER_MENU" # 추가
 
 # 전역 엔티티 리스트
 player = None
@@ -18,6 +19,7 @@ bats = []
 slime_bullets = []
 boss_slimes = []
 storm_projectiles = []
+is_quit_confirm_open = False # 추가
 
 # 게임 정보 및 타이머
 game_state = GAME_STATE_MENU

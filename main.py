@@ -13,12 +13,12 @@ from entities.exp_orb import ExpOrb
 from entities.bat_minion import BatMinion
 
 # ----------------------------------------------------
-# 1. 비동기 통신 래퍼 함수 (게임 루프 정지 방지)
+# 1. 비동기 통신 래퍼 함수
 # ----------------------------------------------------
 async def load_rankings_data():
     """백그라운드에서 랭킹 데이터를 로드합니다."""
     utils.browser_debug("서버 데이터 요청 중...")
-    state.online_rankings = None  # 로딩 중 표시
+    state.online_rankings = None
     try:
         data = await utils.load_rankings_online()
         state.online_rankings = data if data is not None else []
@@ -61,7 +61,7 @@ async def main():
 
     running = True
     
-    # 버튼 객체 정의
+    # 메뉴 버튼 객체
     start_btn = pygame.Rect(0, 0, 200, 80)
     rank_btn = pygame.Rect(0, 0, 150, 60)
     exit_btn = pygame.Rect(config.SCREEN_WIDTH - 50, 10, 40, 40)
@@ -85,7 +85,6 @@ async def main():
                         state.reset_game_state()
                         state.game_state = state.GAME_STATE_PLAYING
                     elif rank_btn.collidepoint(mouse_pos):
-                        utils.browser_debug("랭킹 버튼 클릭됨")
                         state.game_state = state.GAME_STATE_RANKING
                         asyncio.create_task(load_rankings_data()) 
             
@@ -100,22 +99,22 @@ async def main():
 
             # [게임 플레이 상태]
             elif state.game_state == state.GAME_STATE_PLAYING:
-                # 1. 키보드 입력 처리
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_z:
                         if state.player and state.player.special_skill:
                             state.player.special_skill.activate(state.get_entities_dict())
                     
-                    if event.key == pygame.K_m: state.game_state = state.GAME_STATE_INVENTORY
-                    elif event.key == pygame.K_ESCAPE: state.game_state = state.GAME_STATE_MENU
+                    # 🚩 M키 누르면 캐릭터 창으로 이동
+                    if event.key == pygame.K_m: 
+                        state.game_state = state.GAME_STATE_CHARACTER_MENU
+                    elif event.key == pygame.K_ESCAPE: 
+                        state.game_state = state.GAME_STATE_MENU
                     
-                    # 업그레이드 선택 (K_4 추가)
                     elif state.player.is_selecting_boss_reward or state.player.is_selecting_upgrade:
                         choice = -1
                         if event.key == pygame.K_1: choice = 0
                         elif event.key == pygame.K_2: choice = 1
                         elif event.key == pygame.K_3: choice = 2
-                        elif event.key == pygame.K_4: choice = 3  # 4번째 선택지 인식
                         
                         if choice != -1:
                             if state.player.is_selecting_boss_reward:
@@ -125,33 +124,38 @@ async def main():
                                 if removed:
                                     state.bats[:] = [b for b in state.bats if not (isinstance(b, BatMinion) and b.controller == removed)]
 
-                # 2. 마우스 클릭(터치) 입력 처리 추가
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if state.player.is_selecting_boss_reward or state.player.is_selecting_upgrade:
-                        mx, my = mouse_pos
-                        options_count = len(state.player.boss_reward_options_to_display) if state.player.is_selecting_boss_reward else len(state.player.upgrade_options_to_display)
-                        
-                        for i in range(options_count):
-                            # UI에서 그리는 선택창 박스 영역 (중앙 정렬 기준)
-                            box_rect = pygame.Rect(config.SCREEN_WIDTH // 2 - 200, 150 + i * 110, 400, 100)
-                            if box_rect.collidepoint(mx, my):
-                                if state.player.is_selecting_boss_reward:
-                                    state.player.apply_chosen_boss_reward(i)
-                                else:
-                                    removed = state.player.apply_chosen_upgrade(i)
-                                    if removed:
-                                        state.bats[:] = [b for b in state.bats if not (isinstance(b, BatMinion) and b.controller == removed)]
-                                break
+            # [🚩 캐릭터 메뉴 상태]
+            elif state.game_state == state.GAME_STATE_CHARACTER_MENU:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
+                        state.game_state = state.GAME_STATE_PLAYING
+                        state.is_quit_confirm_open = False # 돌아갈 때 확인창도 닫음
+
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if not state.is_quit_confirm_open:
+                        if ui.CHAR_INV_BTN.collidepoint(mouse_pos):
+                            state.game_state = state.GAME_STATE_INVENTORY
+                        elif ui.CHAR_QUIT_BTN.collidepoint(mouse_pos):
+                            state.is_quit_confirm_open = True
+                    else:
+                        if ui.CONFIRM_YES_BTN.collidepoint(mouse_pos):
+                            state.player.hp = 0 # 사망 판정 유도
+                            state.game_state = state.GAME_STATE_PLAYING
+                            state.is_quit_confirm_open = False
+                        elif ui.CONFIRM_NO_BTN.collidepoint(mouse_pos):
+                            state.is_quit_confirm_open = False
 
             # [인벤토리 상태]
             elif state.game_state == state.GAME_STATE_INVENTORY:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
-                        state.game_state = state.GAME_STATE_PLAYING
+                        # 🚩 인벤토리에서 나가면 캐릭터 메뉴로 복귀
+                        state.game_state = state.GAME_STATE_CHARACTER_MENU
 
         # --- 게임 업데이트 로직 ---
-        if state.game_state == state.GAME_STATE_PLAYING and state.player:
-            if not (state.player.is_selecting_upgrade or state.player.is_selecting_boss_reward):
+        if state.game_state in [state.GAME_STATE_PLAYING, state.GAME_STATE_CHARACTER_MENU, state.GAME_STATE_INVENTORY] and state.player:
+            # 캐릭터 메뉴나 인벤토리 중에는 시간 정지 (PLAYING 상태일 때만 로직 수행)
+            if state.game_state == state.GAME_STATE_PLAYING and not (state.player.is_selecting_upgrade or state.player.is_selecting_boss_reward):
                 
                 enemy_grid.clear()
                 for s in state.slimes + state.boss_slimes:
@@ -159,6 +163,7 @@ async def main():
 
                 state.player.update(state.slimes, state.get_entities_dict())
                 
+                # 사망 처리 (게임 중이거나 캐릭터 메뉴에서 Quit을 눌렀을 때 작동)
                 if state.player.hp <= 0:
                     score = {
                         "levels": state.player.level, "kills": state.player.total_enemies_killed,
@@ -166,9 +171,7 @@ async def main():
                         "difficulty_score": state.current_slime_max_hp / config.SLIME_INITIAL_BASE_HP,
                         "survival_time": state.slime_hp_increase_timer / config.FPS
                     }
-                    utils.browser_debug("💀 사망! 데이터 저장 태스크 생성")
                     asyncio.create_task(save_ranking_task(state.player.name, score))
-                    
                     state.game_state = state.GAME_STATE_MENU
                     state.is_game_over_for_menu = True
                 
@@ -188,7 +191,7 @@ async def main():
                     state.daggers[:] = [d for d in state.daggers if d.update(state.get_entities_dict())]
 
         # --- 그리기 섹션 ---
-        if state.game_state in [state.GAME_STATE_PLAYING, state.GAME_STATE_INVENTORY] and state.player:
+        if state.game_state in [state.GAME_STATE_PLAYING, state.GAME_STATE_INVENTORY, state.GAME_STATE_CHARACTER_MENU] and state.player:
             off_x, off_y = 0, 0
             if state.game_state == state.GAME_STATE_PLAYING and state.player.shake_intensity > 0:
                 off_x = random.uniform(-state.player.shake_intensity, state.player.shake_intensity)
@@ -197,6 +200,7 @@ async def main():
             shake_cam_x = state.camera_obj.world_x + off_x
             shake_cam_y = state.camera_obj.world_y + off_y
 
+            # 1. 배경
             if background_image:
                 sx, sy = -(shake_cam_x % bg_w), -(shake_cam_y % bg_h)
                 for y in range((config.SCREEN_HEIGHT // bg_h) + 2):
@@ -204,6 +208,7 @@ async def main():
                         screen.blit(background_image, (sx + x * bg_w, sy + y * bg_h))
             else: screen.fill(config.GREEN)
 
+            # 2. 엔티티 (플레이 중이거나 메뉴 중에도 배경으로 보임)
             for wpn in state.player.active_weapons: wpn.draw(screen, shake_cam_x, shake_cam_y)
             if not (state.player.invincible_timer > 0 and state.player.invincible_timer % 10 < 5):
                 p_rect = state.player.rect.copy()
@@ -213,8 +218,15 @@ async def main():
             for e in state.exp_orbs + state.daggers + state.bats + state.slime_bullets + state.storm_projectiles + state.slimes + state.boss_slimes:
                 e.draw(screen, shake_cam_x, shake_cam_y)
             
+            # 3. HUD
             ui.draw_game_ui(screen, state.player, state.get_entities_dict(), state.current_slime_max_hp, state.player.total_bosses_killed, state.player.total_enemies_killed, config.BOSS_SLIME_SPAWN_KILL_THRESHOLD)
-            if state.game_state == state.GAME_STATE_INVENTORY:
+            
+            # 4. 캐릭터 창 / 인벤토리 오버레이
+            if state.game_state == state.GAME_STATE_CHARACTER_MENU:
+                ui.draw_character_window(screen, state.player)
+                if state.is_quit_confirm_open:
+                    ui.draw_quit_confirmation(screen)
+            elif state.game_state == state.GAME_STATE_INVENTORY:
                 ui.draw_weapon_inventory(screen, state.player)
 
         elif state.game_state == state.GAME_STATE_MENU:
